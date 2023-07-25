@@ -1,10 +1,11 @@
 import openai
 # import redis
+from database import Database
 
-key = "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"
+key = "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"
 
 class Model:
-    def __init__(self, api_key, human_name='Q', ai_name='A',
+    def __init__(self, api_key, memory, human_name='Q', ai_name='A',
                  model="text-davinci-003", temperature=0, max_tokens=300,
                  top_p=1, frequency_penalty=0, presence_penalty=0):
         openai.api_key = api_key
@@ -20,31 +21,37 @@ class Model:
         self.presence_penalty = presence_penalty
 
         # Initial personality and memory list
-        self.all_memory_list = []  # str(input + '\n' + output) for each element
-        self.long_memory_list = []  # (input, output) for each element
-        self.short_memory_list = []  # [input, output, Forgetting_value] for each element
-        self.forgotten_list = []  # Ready to forget
+        self.memory = memory
         self.personality = ''
 
     def set_personality_and_memory(self):
-        self.personality += "I am a highly intelligent question answering bot. If you ask me a question that is rooted in truth, I will give you the answer. If you ask me a question that is nonsense, trickery, or has no clear answer, I will respond with \"Unknown\".\n\n"
+        # Load personality
+        with open('./personality.txt', 'r', encoding='utf-8') as file:
+            self.personality += file.readline() + '\n'
 
-        # The followings are examples
-        self.short_memory_list.append(['What is human life expectancy in the United States?\n', 'Human life expectancy in the United States is 78 years.\n'])
-        self.short_memory_list.append(['Where were the 1992 Olympics held?\n', 'The 1992 Olympics were held in Barcelona, Spain.\n'])
-        self.short_memory_list.append(['How many squigs are in a bonk?\n', 'Unknown\n'])
+        # Load memory
+        with open('./memory.txt', 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+            dialogues = []
+            for i in range(0, len(lines), 2):
+                inp, out = lines[i], lines[i+1]
+                dialogue = self.human_name + ': ' + inp + self.ai_name + ': ' + out
+                dialogues.append(dialogue)
+            self.memory.insert_entities(dialogues)
 
     def get_response(self, prompt):
         # Add personality and memory to the prompt
         new_prompt = self.personality
-        for short_memory in self.short_memory_list:
-            inp, out = short_memory
-            new_prompt += self.human_name + ': ' + inp
-            new_prompt += self.ai_name + ': ' + out
-            new_prompt += '\n'
 
-        # Add the current prompt
+        # Search in memory DB with prompt
+        results = self.memory.search(prompt, limit=1)
+        for result in results:
+            _, dialogue = result
+            new_prompt += dialogue
+
+        # Add current prompt
         new_prompt += self.human_name + ': ' + prompt + '\n' + self.ai_name + ': '
+        # print("This is a test: ", [new_prompt])
 
         # Get response
         response = openai.Completion.create(
@@ -66,6 +73,7 @@ class Model:
         while True:
             prompt = input(self.human_name + ': ')
             if prompt == 'q':
+                self.memory.drop_collection()
                 print('Over. ')
                 break
 
@@ -73,9 +81,10 @@ class Model:
             response = self.get_response(prompt)
             print(self.ai_name + ': ' + response)
 
-            # Add the dialog to memory
-            current_dialog = [prompt + '\n', response + '\n']
-            self.short_memory_list.append(current_dialog)
+            # Add the dialogue to memory
+            current_dialog = self.human_name + ': ' + prompt + '\n' + self.ai_name + ': ' + response + '\n'
+            self.memory.insert_entity(current_dialog)
 
-test = Model(key)
+database = Database(key, 'memory')
+test = Model(key, database)
 test.run()
