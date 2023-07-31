@@ -5,8 +5,8 @@ from database import Database
 key = "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"
 
 class Model:
-    def __init__(self, api_key, memory, human_name='Q', ai_name='A',
-                 model="text-davinci-003", temperature=0, max_tokens=300,
+    def __init__(self, api_key, memory: Database, human_name='Q', ai_name='A',
+                 short_term_len=5, model="text-davinci-003", temperature=0, max_tokens=300,
                  top_p=1, frequency_penalty=0, presence_penalty=0):
         openai.api_key = api_key
         self.human_name = human_name
@@ -22,6 +22,8 @@ class Model:
 
         # Initial personality and memory list
         self.memory = memory
+        self.short_term_list = []
+        self.short_term_len = short_term_len
         self.personality = ''
 
     def set_personality_and_memory(self):
@@ -42,16 +44,32 @@ class Model:
     def get_response(self, prompt):
         # Add personality and memory to the prompt
         new_prompt = self.personality
+        for dialogue in self.short_term_list:
+            new_prompt += dialogue
 
         # Search in memory DB with prompt
-        results = self.memory.search(prompt, limit=1)
+        results = self.memory.search(prompt)[::-1]
+        uid_list = []
+        distance_list = []
         for result in results:
-            _, dialogue = result
+            uid, dialogue, distance = result
             new_prompt += dialogue
+            uid_list.append(uid)
+            distance_list.append(distance)
+
+        # Reset memory retention and time of relevant memory
+        self.memory.review(uid_list)
+        # for short in self.short_term_list:
+        #     print([short])
+        # self.memory.show_all_data()
+
+        # Update all memory and start to forget
+        self.memory.update_memory_retention(uid_list)
+        self.memory.forget()
 
         # Add current prompt
         new_prompt += self.human_name + ': ' + prompt + '\n' + self.ai_name + ': '
-        # print("This is a test: ", [new_prompt])
+        # print([new_prompt])
 
         # Get response
         response = openai.Completion.create(
@@ -81,10 +99,12 @@ class Model:
             response = self.get_response(prompt)
             print(self.ai_name + ': ' + response)
 
-            # Add the dialogue to memory
+            # Insert oldest short-term memory into memory DB if short-term memory is full
             current_dialog = self.human_name + ': ' + prompt + '\n' + self.ai_name + ': ' + response + '\n'
-            self.memory.insert_entity(current_dialog)
+            self.short_term_list.append(current_dialog)
+            if len(self.short_term_list) > self.short_term_len:
+                self.memory.insert_entity(self.short_term_list.pop(0))
 
-database = Database(key, 'memory')
-test = Model(key, database)
+database = Database(api_key=key, collection_name='memory', similarity_threshold=0.36, forgetting_threshold=0.1)
+test = Model(api_key=key, memory=database)
 test.run()
