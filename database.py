@@ -50,6 +50,8 @@ class Database:
         if not has:
             fields = [
                 FieldSchema(name="uid", dtype=DataType.INT64, is_primary=True),
+                FieldSchema(name="user", dtype=DataType.VARCHAR, max_length=max_length),
+                FieldSchema(name="assistant", dtype=DataType.VARCHAR, max_length=max_length),
                 FieldSchema(name="dialogue", dtype=DataType.VARCHAR, max_length=max_length),
                 FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dim)
             ]
@@ -75,10 +77,11 @@ class Database:
         self.collection.load()
 
     # Insert single entity
-    def insert_entity(self, text):
+    def insert_entity(self, record):
         # Insert into Milvus
+        text = record[0] + record[1]
         uid = uuid.uuid4().int >> 65
-        entity = [[uid], [text], [get_embedding(text)]]
+        entity = [[uid], [record[0]], [record[1]], [text], [get_embedding(text)]]
         self.collection.insert(entity)
 
         # Insert into Redis
@@ -87,14 +90,17 @@ class Database:
         self.redis_client.hset(uid, 'revision', 0)
 
     # Insert multiple entities
-    def insert_entities(self, text_list):
+    def insert_entities(self, record_list):
         # Insert into Milvus
-        uid_list, dialogue_list, embedding_list = [], [], []
-        for text in text_list:
+        uid_list, user_list, assistant_list, dialogue_list, embedding_list = [], [], [], [], []
+        for record in record_list:
+            text = record[0] + record[1]
             uid_list.append(uuid.uuid4().int >> 65)
+            user_list.append(record[0])
+            assistant_list.append(record[1])
             dialogue_list.append(text)
             embedding_list.append(get_embedding(text))
-        entities = [uid_list, dialogue_list, embedding_list]
+        entities = [uid_list, user_list, assistant_list, dialogue_list, embedding_list]
         self.collection.insert(entities)
 
         # Insert into Redis
@@ -113,15 +119,16 @@ class Database:
             "params": {"nprobe": 10},
         }
 
-        results = self.collection.search(vector_to_search, "embedding", search_params,
-                                        limit=self.search_limit, output_fields=["uid", "dialogue"],
+        results = self.collection.search(data=vector_to_search, anns_field="embedding", param=search_params,
+                                        limit=self.search_limit, output_fields=["uid", "user", "assistant"],
                                         expr=None, consistency_level="Strong")
         # print(results)
         filtered_results = [result for result in results[0] if result.distance < self.similarity_threshold]
 
         result_list = []
         for hit in filtered_results:
-            result_list.append([hit.entity.get('uid'), hit.entity.get('dialogue'), hit.distance])
+            result_list.append([hit.entity.get('uid'), hit.entity.get('user'),
+                                hit.entity.get('assistant'), hit.distance])
 
         return result_list
 
@@ -187,7 +194,8 @@ class Database:
         self.redis_client.flushdb()
 
 if __name__ == '__main__':
-    key = "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"
+    with open("key.txt", 'r') as file:
+        key = file.readline().strip()
     database = Database(key, 'test')
 
     human_name = "Q"
