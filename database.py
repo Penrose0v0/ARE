@@ -1,5 +1,3 @@
-import openai
-import time
 from math import exp
 import uuid
 import redis
@@ -10,12 +8,7 @@ from pymilvus import (
     Collection,
 )
 
-def get_embedding(text):
-    response = openai.Embedding.create(
-        input=text,
-        model="text-embedding-ada-002"
-    )
-    return response["data"][0]["embedding"]
+from module import Module
 
 # Get current rate of memory using forgetting curve
 def forgetting_curve(x, a, b=0.082, k=0.5):
@@ -23,11 +16,10 @@ def forgetting_curve(x, a, b=0.082, k=0.5):
     c = b * exp(-k * a)
     return exp(-c * x)
 
-class Database:
-    def __init__(self, api_key, collection_name,
-                 similarity_threshold=0.36, search_limit=5, forgetting_threshold=0.1,
+class Database(Module):
+    def __init__(self, collection_name='memory', similarity_threshold=0.36, search_limit=5, forgetting_threshold=0.1,
                  max_length=300, dim=1536, scan_count=100):
-        openai.api_key = api_key
+        super().__init__()
         self.collection_name = collection_name
         self.scan_count = scan_count
         self.similarity_threshold = similarity_threshold
@@ -81,7 +73,7 @@ class Database:
         # Insert into Milvus
         text = record[0] + record[1]
         uid = uuid.uuid4().int >> 65
-        entity = [[uid], [record[0]], [record[1]], [text], [get_embedding(text)]]
+        entity = [[uid], [record[0]], [record[1]], [text], [self.get_embedding(text)]]
         self.collection.insert(entity)
 
         # Insert into Redis
@@ -99,7 +91,7 @@ class Database:
             user_list.append(record[0])
             assistant_list.append(record[1])
             dialogue_list.append(text)
-            embedding_list.append(get_embedding(text))
+            embedding_list.append(self.get_embedding(text))
         entities = [uid_list, user_list, assistant_list, dialogue_list, embedding_list]
         self.collection.insert(entities)
 
@@ -113,7 +105,7 @@ class Database:
 
     # Search from Milvus
     def search(self, text):
-        vector_to_search = [get_embedding(text)]
+        vector_to_search = [self.get_embedding(text)]
         search_params = {
             "metric_type": "L2",
             "params": {"nprobe": 10},
