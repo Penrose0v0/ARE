@@ -10,9 +10,7 @@ class System_Prompt_Generator(Module):
             "You need to analyze user input, then provide system prompt without giving any answer directly " \
             "in order to give instructions and align tasks to the question-answering GPT. " \
             "The conversation should guide the AI's responses in a way that maintains context and coherence. " \
-            "In the conversation, 'U' means 'user' while 'A' means 'assistant'. " \
-            "Also, tell question-answering GPT to prioritize finding answers from the history records. " \
-            "If the history record is not related to the current conversation, just ignore it. \n"
+            "In the conversation, 'U' means 'user' while 'A' means 'assistant'. \n"
 
         samples = [
             (
