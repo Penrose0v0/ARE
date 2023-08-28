@@ -59,7 +59,7 @@ class Model:
         if view_status:
             print(f"\t-System Prompt: {self.system_prompt.strip()}")
             print(f"\t-Temperature: {self.temperature}")
-            print(f"\t-Time: {end - start}")
+            print(f"\t-Time: {end - start:.2f}s")
 
         return assistant_output
 
